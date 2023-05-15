@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -83,6 +84,41 @@ func getItems(c echo.Context) error {
 	return c.JSON(http.StatusOK, jsonContent)
 }
 
+func getItemDetail(c echo.Context) error {
+	// Get item ID
+	itemId := c.Param("itemId")
+
+	// Change string to int
+	itemIdInt, _ := strconv.Atoi(itemId)
+
+	// Get items from JSON file
+	jsonFile, err := os.Open("items.json")
+	if err != nil {
+		c.Logger().Errorf("Error opening items.json: %s", err)
+		res := Response{Message: "Error opening items.json"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+	defer jsonFile.Close()
+
+	jsonData, err := ioutil.ReadAll(jsonFile)
+	if err != nil {
+		c.Logger().Errorf("Error reading items.json: %s", err)
+		res := Response{Message: "Error reading items.json"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	var jsonContent Response
+	json.Unmarshal(jsonData, &jsonContent)
+	if itemIdInt-1 >= 0 && itemIdInt-1 < len(jsonContent.Items) {
+		ItemDetail := jsonContent.Items[itemIdInt-1]
+		return c.JSON(http.StatusOK, ItemDetail)
+	} else {
+		res := Response{Message: "Item not found"}
+		return c.JSON(http.StatusNotFound, res)
+	}
+
+}
+
 func getImg(c echo.Context) error {
 	// Create image path
 	imgPath := path.Join(ImgDir, c.Param("imageFilename"))
@@ -148,6 +184,7 @@ func main() {
 	// Routes
 	e.GET("/", root)
 	e.GET("/items", getItems)
+	e.GET("/items/:itemId", getItemDetail)
 	e.POST("/items", addItem)
 	e.GET("/image/:imageFilename", getImg)
 
