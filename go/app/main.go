@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -16,8 +18,15 @@ const (
 	ImgDir = "images"
 )
 
+type ItemDetail struct {
+	Name          string `json:"name"`
+	Category      string `json:"category"`
+	ImageFilename string `json:"imageFilename"`
+}
+
 type Response struct {
-	Message string `json:"message"`
+	Items   []ItemDetail `json:"items,omitempty"`
+	Message string       `json:"message,omitempty"`
 }
 
 func root(c echo.Context) error {
@@ -34,6 +43,29 @@ func addItem(c echo.Context) error {
 	res := Response{Message: message}
 
 	return c.JSON(http.StatusOK, res)
+}
+
+func getItems(c echo.Context) error {
+	jsonFile, err := os.Open("items.json")
+	if err != nil {
+		c.Logger().Errorf("Error opening items.json: %s", err)
+		res := Response{Message: "Error opening items.json"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	defer jsonFile.Close()
+
+	jsonData, err := ioutil.ReadAll(jsonFile)
+
+	if err != nil {
+		c.Logger().Errorf("Error reading items.json: %s", err)
+		res := Response{Message: "Error reading items.json"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	var jsonContent Response
+	json.Unmarshal(jsonData, &jsonContent)
+	return c.JSON(http.StatusOK, jsonContent)
 }
 
 func getImg(c echo.Context) error {
@@ -70,9 +102,9 @@ func main() {
 
 	// Routes
 	e.GET("/", root)
+	e.GET("/items", getItems)
 	e.POST("/items", addItem)
 	e.GET("/image/:imageFilename", getImg)
-
 
 	// Start server
 	e.Logger.Fatal(e.Start(":9000"))
