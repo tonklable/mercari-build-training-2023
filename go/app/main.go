@@ -1,8 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -21,7 +22,11 @@ const (
 type ItemDetail struct {
 	Name          string `json:"name"`
 	Category      string `json:"category"`
-	ImageFilename string `json:"imageFilename"`
+	ImageFilename string `json:"image"`
+}
+
+type Items struct {
+	Items []ItemDetail `json:"items"`
 }
 
 type Response struct {
@@ -36,12 +41,22 @@ func root(c echo.Context) error {
 
 func addItem(c echo.Context) error {
 	// Get form data
-	name := c.FormValue("name")
-	c.Logger().Infof("Receive item: %s", name)
+	var newItem ItemDetail
+	newItem.Name = c.FormValue("name")
+	newItem.Category = c.FormValue("category")
+	imgFilePath := c.FormValue("image")
+	hash := calculateImageHash(imgFilePath)
+	newItem.ImageFilename = hash
 
-	message := fmt.Sprintf("item received: %s", name)
-	res := Response{Message: message}
+	// Add new item to existing items
+	existingItems := loadItemsFromJSON()
+	existingItems.Items = append(existingItems.Items, newItem)
 
+	saveItemToJSON(existingItems)
+
+	c.Logger().Infof("Receive item: %s", newItem)
+	// message := fmt.Sprintf("Item %s added", newItem.Name)
+	res := Response{Items: existingItems.Items}
 	return c.JSON(http.StatusOK, res)
 }
 
@@ -81,6 +96,36 @@ func getImg(c echo.Context) error {
 		imgPath = path.Join(ImgDir, "default.jpg")
 	}
 	return c.File(imgPath)
+}
+
+func loadItemsFromJSON() Items {
+	// Read JSON file
+	data, _ := os.ReadFile("items.json")
+
+	//Parse JSON data
+	var jsonItems Items
+	_ = json.Unmarshal(data, &jsonItems)
+
+	return jsonItems
+}
+
+func saveItemToJSON(jsonItems Items) {
+	// Save data to JSON file
+	data, _ := json.Marshal(jsonItems)
+	_ = os.WriteFile("items.json", data, 0644)
+}
+
+func calculateImageHash(imageFilePath string) string {
+	//Read image file
+	imageData, _ := os.ReadFile(imageFilePath)
+
+	//Calculate hash
+	hash := sha256.Sum256(imageData)
+
+	//Convert hash to string
+	hashString := hex.EncodeToString(hash[:]) + ".jpg"
+
+	return hashString
 }
 
 func main() {
