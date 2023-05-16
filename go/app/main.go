@@ -43,20 +43,39 @@ func root(c echo.Context) error {
 func addItem(c echo.Context) error {
 	// Get form data
 	var newItem ItemDetail
-	newItem.Name = c.FormValue("name")
-	newItem.Category = c.FormValue("category")
+
+	// Get image file path
 	imgFilePath := c.FormValue("image")
-	hash := calculateImageHash(imgFilePath)
-	newItem.ImageFilename = hash
+	hash, err := calculateImageHash(imgFilePath)
+	if err != nil {
+		c.Logger().Errorf("Error calculating image hash: %s", err)
+		res := Response{Message: "Error calculating image hash"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+	// Create new item
+	newItem = ItemDetail{
+		Name:          c.FormValue("name"),
+		Category:      c.FormValue("category"),
+		ImageFilename: hash,
+	}
 
 	// Add new item to existing items
-	existingItems := loadItemsFromJSON()
+	existingItems, err := loadItemsFromJSON()
+	if err != nil {
+		c.Logger().Errorf("Error loading items from JSON: %s", err)
+		res := Response{Message: "Error loading items from JSON"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
 	existingItems.Items = append(existingItems.Items, newItem)
 
-	saveItemToJSON(existingItems)
+	err = saveItemToJSON(existingItems)
+	if err != nil {
+		c.Logger().Errorf("Error saving items to JSON: %s", err)
+		res := Response{Message: "Error saving items to JSON"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
 
 	c.Logger().Infof("Receive item: %s", newItem)
-	// message := fmt.Sprintf("Item %s added", newItem.Name)
 	res := Response{Items: existingItems.Items}
 	return c.JSON(http.StatusOK, res)
 }
@@ -89,7 +108,12 @@ func getItemDetail(c echo.Context) error {
 	itemId := c.Param("itemId")
 
 	// Change string to int
-	itemIdInt, _ := strconv.Atoi(itemId)
+	itemIdInt, err := strconv.Atoi(itemId)
+	if err != nil {
+		c.Logger().Errorf("Error converting item ID to int: %s", err)
+		res := Response{Message: "Error converting item ID to int"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
 
 	// Get items from JSON file
 	jsonFile, err := os.Open("items.json")
@@ -134,26 +158,27 @@ func getImg(c echo.Context) error {
 	return c.File(imgPath)
 }
 
-func loadItemsFromJSON() Items {
+func loadItemsFromJSON() (Items, error) {
 	// Read JSON file
-	data, _ := os.ReadFile("items.json")
+	data, err := os.ReadFile("items.json")
 
 	//Parse JSON data
 	var jsonItems Items
 	_ = json.Unmarshal(data, &jsonItems)
 
-	return jsonItems
+	return jsonItems, err
 }
 
-func saveItemToJSON(jsonItems Items) {
+func saveItemToJSON(jsonItems Items) error {
 	// Save data to JSON file
-	data, _ := json.Marshal(jsonItems)
+	data, err := json.Marshal(jsonItems)
 	_ = os.WriteFile("items.json", data, 0644)
+	return err
 }
 
-func calculateImageHash(imageFilePath string) string {
+func calculateImageHash(imageFilePath string) (string, error) {
 	//Read image file
-	imageData, _ := os.ReadFile(imageFilePath)
+	imageData, err := os.ReadFile(imageFilePath)
 
 	//Calculate hash
 	hash := sha256.Sum256(imageData)
@@ -161,7 +186,7 @@ func calculateImageHash(imageFilePath string) string {
 	//Convert hash to string
 	hashString := hex.EncodeToString(hash[:]) + ".jpg"
 
-	return hashString
+	return hashString, err
 }
 
 func main() {
