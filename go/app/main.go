@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/sha256"
+
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+
 	"net/http"
 	"os"
 	"path"
@@ -22,6 +24,7 @@ const (
 )
 
 type ItemDetail struct {
+
 	Id            int    `json:"id"`
 	Name          string `json:"name"`
 	Category      string `json:"category"`
@@ -224,7 +227,71 @@ func searchItems(c echo.Context) error {
 
 	// Return response
 	res := Response{Items: items}
+
 	return c.JSON(http.StatusOK, res)
+}
+
+func getItems(c echo.Context) error {
+	jsonFile, err := os.Open("items.json")
+	if err != nil {
+		c.Logger().Errorf("Error opening items.json: %s", err)
+		res := Response{Message: "Error opening items.json"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	defer jsonFile.Close()
+
+	jsonData, err := ioutil.ReadAll(jsonFile)
+
+	if err != nil {
+		c.Logger().Errorf("Error reading items.json: %s", err)
+		res := Response{Message: "Error reading items.json"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	var jsonContent Response
+	json.Unmarshal(jsonData, &jsonContent)
+	return c.JSON(http.StatusOK, jsonContent)
+}
+
+func getItemDetail(c echo.Context) error {
+	// Get item ID
+	itemId := c.Param("itemId")
+
+	// Change string to int
+	itemIdInt, err := strconv.Atoi(itemId)
+	if err != nil {
+		c.Logger().Errorf("Error converting item ID to int: %s", err)
+		res := Response{Message: "Error converting item ID to int"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	// Get items from JSON file
+	jsonFile, err := os.Open("items.json")
+	if err != nil {
+		c.Logger().Errorf("Error opening items.json: %s", err)
+		res := Response{Message: "Error opening items.json"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+	defer jsonFile.Close()
+
+	jsonData, err := ioutil.ReadAll(jsonFile)
+	if err != nil {
+		c.Logger().Errorf("Error reading items.json: %s", err)
+		res := Response{Message: "Error reading items.json"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	var jsonContent Response
+	json.Unmarshal(jsonData, &jsonContent)
+	if itemIdInt-1 >= 0 && itemIdInt-1 < len(jsonContent.Items) {
+		ItemDetail := jsonContent.Items[itemIdInt-1]
+		return c.JSON(http.StatusOK, ItemDetail)
+	} else {
+		res := Response{Message: "Item not found"}
+		return c.JSON(http.StatusNotFound, res)
+	}
+
 }
 
 func getImg(c echo.Context) error {
@@ -241,6 +308,8 @@ func getImg(c echo.Context) error {
 	}
 	return c.File(imgPath)
 }
+
+
 
 func calculateImageHash(imageFilePath string) (string, error) {
 	//Read image file
