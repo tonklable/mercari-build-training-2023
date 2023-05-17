@@ -194,7 +194,9 @@ func searchItems(c echo.Context) error {
 	defer db.Close()
 
 	// Query database
-	row, err := db.Query("SELECT id, name, category, image FROM items WHERE id LIKE ? OR name LIKE ? OR category LIKE ? OR image LIKE ?", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+	query := "SELECT id, name, category, image FROM items WHERE id LIKE ? OR name LIKE ? OR category LIKE ? OR image LIKE ?"
+	likeKeyword := "%" + keyword + "%"
+	row, err := db.Query(query, likeKeyword, likeKeyword, likeKeyword, likeKeyword)
 
 	if err != nil {
 		c.Logger().Errorf("Error querying database, %v", err)
