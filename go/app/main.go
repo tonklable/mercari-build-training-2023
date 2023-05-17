@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -61,24 +62,35 @@ func addItem(c echo.Context) error {
 		ImageFilename: hash,
 	}
 
-	// Add new item to existing items
-	existingItems, err := loadItemsFromJSON()
-	if err != nil {
-		c.Logger().Errorf("Error loading items from JSON: %s", err)
-		res := Response{Message: "Error loading items from JSON"}
-		return c.JSON(http.StatusInternalServerError, res)
-	}
-	existingItems.Items = append(existingItems.Items, newItem)
+	// Get items from database
+	db, err := sql.Open("sqlite3", "../db/items.db")
 
-	err = saveItemToJSON(existingItems)
 	if err != nil {
-		c.Logger().Errorf("Error saving items to JSON: %s", err)
-		res := Response{Message: "Error saving items to JSON"}
+		c.Logger().Errorf("Error opening database, %v", err)
+		res := Response{Message: "Error opening database"}
 		return c.JSON(http.StatusInternalServerError, res)
 	}
 
-	c.Logger().Infof("Receive item: %s", newItem)
-	res := Response{Items: existingItems.Items}
+	defer db.Close()
+
+	// Insert item into database
+	result, err := db.Exec("INSERT INTO items (name, category, image) VALUES (?, ?, ?)", newItem.Name, newItem.Category, newItem.ImageFilename)
+	if err != nil {
+		c.Logger().Errorf("Error inserting item into database, %v", err)
+		res := Response{Message: "Error inserting item into database"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	// Lastly, return the new item
+	lastInsertID, err := result.LastInsertId()
+	if err != nil {
+		c.Logger().Errorf("Error getting last insert ID, %v", err)
+		res := Response{Message: "Error getting last insert ID"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	newItem.Id = int(lastInsertID)
+	res := Response{Message: fmt.Sprintf("Received item: %v", newItem)}
 	return c.JSON(http.StatusOK, res)
 }
 
