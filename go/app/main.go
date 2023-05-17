@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -182,6 +181,52 @@ func getItemDetail(c echo.Context) error {
 	return c.JSON(http.StatusOK, item)
 }
 
+func searchItems(c echo.Context) error {
+	keyword := c.QueryParam("keyword")
+	db, err := sql.Open("sqlite3", "../db/items.db")
+
+	if err != nil {
+		c.Logger().Errorf("Error opening database, %v", err)
+		res := Response{Message: "Error opening database"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	defer db.Close()
+
+	// Query database
+	row, err := db.Query("SELECT id, name, category, image FROM items WHERE id LIKE ? OR name LIKE ? OR category LIKE ? OR image LIKE ?", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+
+	if err != nil {
+		c.Logger().Errorf("Error querying database, %v", err)
+		res := Response{Message: "Error querying database"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+	defer row.Close()
+
+	//Iterate through rows and add to response struct
+	var items []ItemDetail
+	for row.Next() {
+		var item ItemDetail
+		err := row.Scan(&item.Id, &item.Name, &item.Category, &item.ImageFilename)
+		if err != nil {
+			c.Logger().Errorf("Error scanning row, %v", err)
+			res := Response{Message: "Error scanning row"}
+			return c.JSON(http.StatusInternalServerError, res)
+		}
+		items = append(items, item)
+	}
+
+	// Check for errors
+	if err := row.Err(); err != nil {
+		res := Response{Message: "Error iterating through rows"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	// Return response
+	res := Response{Items: items}
+	return c.JSON(http.StatusOK, res)
+}
+
 func getImg(c echo.Context) error {
 	// Create image path
 	imgPath := path.Join(ImgDir, c.Param("imageFilename"))
@@ -195,24 +240,6 @@ func getImg(c echo.Context) error {
 		imgPath = path.Join(ImgDir, "default.jpg")
 	}
 	return c.File(imgPath)
-}
-
-func loadItemsFromJSON() (Items, error) {
-	// Read JSON file
-	data, err := os.ReadFile("items.json")
-
-	//Parse JSON data
-	var jsonItems Items
-	_ = json.Unmarshal(data, &jsonItems)
-
-	return jsonItems, err
-}
-
-func saveItemToJSON(jsonItems Items) error {
-	// Save data to JSON file
-	data, err := json.Marshal(jsonItems)
-	_ = os.WriteFile("items.json", data, 0644)
-	return err
 }
 
 func calculateImageHash(imageFilePath string) (string, error) {
@@ -251,6 +278,7 @@ func main() {
 	e.GET("/items/:itemId", getItemDetail)
 	e.POST("/items", addItem)
 	e.GET("/image/:imageFilename", getImg)
+	e.GET("/items/search", searchItems)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":9000"))
