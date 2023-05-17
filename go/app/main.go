@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -139,32 +138,36 @@ func getItemDetail(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, res)
 	}
 
-	// Get items from JSON file
-	jsonFile, err := os.Open("items.json")
-	if err != nil {
-		c.Logger().Errorf("Error opening items.json: %s", err)
-		res := Response{Message: "Error opening items.json"}
-		return c.JSON(http.StatusInternalServerError, res)
-	}
-	defer jsonFile.Close()
+	// Get items from database
+	db, err := sql.Open("sqlite3", "../db/items.db")
 
-	jsonData, err := ioutil.ReadAll(jsonFile)
 	if err != nil {
-		c.Logger().Errorf("Error reading items.json: %s", err)
-		res := Response{Message: "Error reading items.json"}
+		c.Logger().Errorf("Error opening database, %v", err)
+		res := Response{Message: "Error opening database"}
 		return c.JSON(http.StatusInternalServerError, res)
 	}
 
-	var jsonContent Response
-	json.Unmarshal(jsonData, &jsonContent)
-	if itemIdInt-1 >= 0 && itemIdInt-1 < len(jsonContent.Items) {
-		ItemDetail := jsonContent.Items[itemIdInt-1]
-		return c.JSON(http.StatusOK, ItemDetail)
-	} else {
-		res := Response{Message: "Item not found"}
-		return c.JSON(http.StatusNotFound, res)
+	defer db.Close()
+
+	// Query database
+	row := db.QueryRow("SELECT id, name, category, image FROM items WHERE id = ?", itemIdInt)
+
+	var item ItemDetail
+
+	// Scan row into item struct
+	err = row.Scan(&item.Id, &item.Name, &item.Category, &item.ImageFilename)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			res := Response{Message: "Item not found"}
+			return c.JSON(http.StatusNotFound, res)
+		}
+		c.Logger().Errorf("Error querying database, %v", err)
+		res := Response{Message: "Error querying database"}
+		return c.JSON(http.StatusInternalServerError, res)
 	}
 
+	return c.JSON(http.StatusOK, item)
 }
 
 func getImg(c echo.Context) error {
