@@ -2,9 +2,9 @@ package main
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
-	"encoding/json"
-	"io/ioutil"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -21,6 +22,7 @@ const (
 )
 
 type ItemDetail struct {
+	Id            int    `json:"id"`
 	Name          string `json:"name"`
 	Category      string `json:"category"`
 	ImageFilename string `json:"image"`
@@ -59,48 +61,80 @@ func addItem(c echo.Context) error {
 		ImageFilename: hash,
 	}
 
-	// Add new item to existing items
-	existingItems, err := loadItemsFromJSON()
-	if err != nil {
-		c.Logger().Errorf("Error loading items from JSON: %s", err)
-		res := Response{Message: "Error loading items from JSON"}
-		return c.JSON(http.StatusInternalServerError, res)
-	}
-	existingItems.Items = append(existingItems.Items, newItem)
+	// Get items from database
+	db, err := sql.Open("sqlite3", "../db/items.db")
 
-	err = saveItemToJSON(existingItems)
 	if err != nil {
-		c.Logger().Errorf("Error saving items to JSON: %s", err)
-		res := Response{Message: "Error saving items to JSON"}
+		c.Logger().Errorf("Error opening database, %v", err)
+		res := Response{Message: "Error opening database"}
 		return c.JSON(http.StatusInternalServerError, res)
 	}
 
-	c.Logger().Infof("Receive item: %s", newItem)
-	res := Response{Items: existingItems.Items}
+	defer db.Close()
+
+	// Insert item into database
+	result, err := db.Exec("INSERT INTO items (name, category, image) VALUES (?, ?, ?)", newItem.Name, newItem.Category, newItem.ImageFilename)
+	if err != nil {
+		c.Logger().Errorf("Error inserting item into database, %v", err)
+		res := Response{Message: "Error inserting item into database"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	// Lastly, return the new item
+	lastInsertID, err := result.LastInsertId()
+	if err != nil {
+		c.Logger().Errorf("Error getting last insert ID, %v", err)
+		res := Response{Message: "Error getting last insert ID"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	newItem.Id = int(lastInsertID)
+	res := Response{Message: fmt.Sprintf("Received item: %v", newItem)}
 	return c.JSON(http.StatusOK, res)
 }
 
 func getItems(c echo.Context) error {
-	jsonFile, err := os.Open("items.json")
+	db, err := sql.Open("sqlite3", "../db/items.db")
+
 	if err != nil {
-		c.Logger().Errorf("Error opening items.json: %s", err)
-		res := Response{Message: "Error opening items.json"}
+		c.Logger().Errorf("Error opening database, %v", err)
+		res := Response{Message: "Error opening database"}
 		return c.JSON(http.StatusInternalServerError, res)
 	}
 
-	defer jsonFile.Close()
+	defer db.Close()
 
-	jsonData, err := ioutil.ReadAll(jsonFile)
-
+	// Query database
+	row, err := db.Query("SELECT id, name, category, image FROM items")
 	if err != nil {
-		c.Logger().Errorf("Error reading items.json: %s", err)
-		res := Response{Message: "Error reading items.json"}
+		c.Logger().Errorf("Error querying database, %v", err)
+		res := Response{Message: "Error querying database"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+	defer row.Close()
+
+	//Iterate through rows and add to response struct
+	var items []ItemDetail
+	for row.Next() {
+		var item ItemDetail
+		err := row.Scan(&item.Id, &item.Name, &item.Category, &item.ImageFilename)
+		if err != nil {
+			c.Logger().Errorf("Error scanning row, %v", err)
+			res := Response{Message: "Error scanning row"}
+			return c.JSON(http.StatusInternalServerError, res)
+		}
+		items = append(items, item)
+	}
+
+	// Check for errors
+	if err := row.Err(); err != nil {
+		res := Response{Message: "Error iterating through rows"}
 		return c.JSON(http.StatusInternalServerError, res)
 	}
 
-	var jsonContent Response
-	json.Unmarshal(jsonData, &jsonContent)
-	return c.JSON(http.StatusOK, jsonContent)
+	// Return response
+	res := Response{Items: items}
+	return c.JSON(http.StatusOK, res)
 }
 
 func getItemDetail(c echo.Context) error {
@@ -115,32 +149,84 @@ func getItemDetail(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, res)
 	}
 
-	// Get items from JSON file
-	jsonFile, err := os.Open("items.json")
-	if err != nil {
-		c.Logger().Errorf("Error opening items.json: %s", err)
-		res := Response{Message: "Error opening items.json"}
-		return c.JSON(http.StatusInternalServerError, res)
-	}
-	defer jsonFile.Close()
+	// Get items from database
+	db, err := sql.Open("sqlite3", "../db/items.db")
 
-	jsonData, err := ioutil.ReadAll(jsonFile)
 	if err != nil {
-		c.Logger().Errorf("Error reading items.json: %s", err)
-		res := Response{Message: "Error reading items.json"}
+		c.Logger().Errorf("Error opening database, %v", err)
+		res := Response{Message: "Error opening database"}
 		return c.JSON(http.StatusInternalServerError, res)
 	}
 
-	var jsonContent Response
-	json.Unmarshal(jsonData, &jsonContent)
-	if itemIdInt-1 >= 0 && itemIdInt-1 < len(jsonContent.Items) {
-		ItemDetail := jsonContent.Items[itemIdInt-1]
-		return c.JSON(http.StatusOK, ItemDetail)
-	} else {
-		res := Response{Message: "Item not found"}
-		return c.JSON(http.StatusNotFound, res)
+	defer db.Close()
+
+	// Query database
+	row := db.QueryRow("SELECT id, name, category, image FROM items WHERE id = ?", itemIdInt)
+
+	var item ItemDetail
+
+	// Scan row into item struct
+	err = row.Scan(&item.Id, &item.Name, &item.Category, &item.ImageFilename)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			res := Response{Message: "Item not found"}
+			return c.JSON(http.StatusNotFound, res)
+		}
+		c.Logger().Errorf("Error querying database, %v", err)
+		res := Response{Message: "Error querying database"}
+		return c.JSON(http.StatusInternalServerError, res)
 	}
 
+	return c.JSON(http.StatusOK, item)
+}
+
+func searchItems(c echo.Context) error {
+	keyword := c.QueryParam("keyword")
+	db, err := sql.Open("sqlite3", "../db/items.db")
+
+	if err != nil {
+		c.Logger().Errorf("Error opening database, %v", err)
+		res := Response{Message: "Error opening database"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	defer db.Close()
+
+	// Query database
+	query := "SELECT id, name, category, image FROM items WHERE id LIKE ? OR name LIKE ? OR category LIKE ? OR image LIKE ?"
+	likeKeyword := "%" + keyword + "%"
+	row, err := db.Query(query, likeKeyword, likeKeyword, likeKeyword, likeKeyword)
+
+	if err != nil {
+		c.Logger().Errorf("Error querying database, %v", err)
+		res := Response{Message: "Error querying database"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+	defer row.Close()
+
+	//Iterate through rows and add to response struct
+	var items []ItemDetail
+	for row.Next() {
+		var item ItemDetail
+		err := row.Scan(&item.Id, &item.Name, &item.Category, &item.ImageFilename)
+		if err != nil {
+			c.Logger().Errorf("Error scanning row, %v", err)
+			res := Response{Message: "Error scanning row"}
+			return c.JSON(http.StatusInternalServerError, res)
+		}
+		items = append(items, item)
+	}
+
+	// Check for errors
+	if err := row.Err(); err != nil {
+		res := Response{Message: "Error iterating through rows"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	// Return response
+	res := Response{Items: items}
+	return c.JSON(http.StatusOK, res)
 }
 
 func getImg(c echo.Context) error {
@@ -156,24 +242,6 @@ func getImg(c echo.Context) error {
 		imgPath = path.Join(ImgDir, "default.jpg")
 	}
 	return c.File(imgPath)
-}
-
-func loadItemsFromJSON() (Items, error) {
-	// Read JSON file
-	data, err := os.ReadFile("items.json")
-
-	//Parse JSON data
-	var jsonItems Items
-	_ = json.Unmarshal(data, &jsonItems)
-
-	return jsonItems, err
-}
-
-func saveItemToJSON(jsonItems Items) error {
-	// Save data to JSON file
-	data, err := json.Marshal(jsonItems)
-	_ = os.WriteFile("items.json", data, 0644)
-	return err
 }
 
 func calculateImageHash(imageFilePath string) (string, error) {
@@ -212,6 +280,7 @@ func main() {
 	e.GET("/items/:itemId", getItemDetail)
 	e.POST("/items", addItem)
 	e.GET("/image/:imageFilename", getImg)
+	e.GET("/items/search", searchItems)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":9000"))
