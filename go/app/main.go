@@ -281,7 +281,7 @@ func main() {
 	e.GET("/items/:itemId", getItemDetail)
 	e.POST("/items", addItem)
 	e.GET("/image/:imageFilename", getImg)
-	e.GET("/items/search", searchItems)
+	e.GET("/search", searchItems)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":9000"))
