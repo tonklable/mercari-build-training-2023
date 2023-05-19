@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	ImgDir = "images"
+	ImgDir      = "images"
+	databaseDir = "./db/items.db"
 )
 
 type ItemDetail struct {
@@ -62,7 +63,7 @@ func addItem(c echo.Context) error {
 	}
 
 	// Get items from database
-	db, err := sql.Open("sqlite3", "../db/items.db")
+	db, err := sql.Open("sqlite3", databaseDir)
 
 	if err != nil {
 		c.Logger().Errorf("Error opening database, %v", err)
@@ -94,7 +95,7 @@ func addItem(c echo.Context) error {
 }
 
 func getItems(c echo.Context) error {
-	db, err := sql.Open("sqlite3", "../db/items.db")
+	db, err := sql.Open("sqlite3", databaseDir)
 
 	if err != nil {
 		c.Logger().Errorf("Error opening database, %v", err)
@@ -150,7 +151,7 @@ func getItemDetail(c echo.Context) error {
 	}
 
 	// Get items from database
-	db, err := sql.Open("sqlite3", "../db/items.db")
+	db, err := sql.Open("sqlite3", databaseDir)
 
 	if err != nil {
 		c.Logger().Errorf("Error opening database, %v", err)
@@ -183,7 +184,7 @@ func getItemDetail(c echo.Context) error {
 
 func searchItems(c echo.Context) error {
 	keyword := c.QueryParam("keyword")
-	db, err := sql.Open("sqlite3", "../db/items.db")
+	db, err := sql.Open("sqlite3", databaseDir)
 
 	if err != nil {
 		c.Logger().Errorf("Error opening database, %v", err)
