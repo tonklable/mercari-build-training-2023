@@ -47,26 +47,28 @@ export const ItemList: React.FC<Prop> = (props) => {
   }, [reload]);
 
   return (
-    <div>
-      {items ? items.map((item) => {
+    <div id="item-grid">
+      <ul className="item-list">
+        {items ? items.map((item) => {
 
-        const imgSource = server.concat('/image/', item.image);
-        return (
-          <div key={item.id} className='ItemList'>
-            {/* TODO: Task 1: Replace the placeholder image with the item image */}
-            {
-              item.image ?
-                <img src={imgSource} /> :
-                <img src={placeholderImage} />
-            }
-            <p>
-              <span>Name: {item.name}</span>
-              <br />
-              <span>Category: {item.category}</span>
-            </p>
-          </div>
-        )
-      }) : null}
+          const imgSource = server.concat('/image/', item.image);
+          return (
+            <li key={item.id} className='ItemList'>
+              {/* TODO: Task 1: Replace the placeholder image with the item image */}
+              {
+                item.image ?
+                  <img src={imgSource} /> :
+                  <img src={placeholderImage} />
+              }
+              <p>
+                <span>Name: {item.name}</span>
+                <br />
+                <span>Category: {item.category}</span>
+              </p>
+            </li>
+          )
+        }) : null}
+      </ul>
     </div>
   )
 };
