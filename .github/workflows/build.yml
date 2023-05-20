@@ -37,11 +37,20 @@ jobs:
         echo 'Tag: ${{ steps.meta.outputs.tags }}'
         echo 'Label: ${{ steps.meta.labels.tags }}'
 
-    - name: Build and push Docker image
+    - name: Build and push Docker image app
       uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
       with:
        context: go
        file: go/Dockerfile
+       push: true
+       tags: ${{ steps.meta.outputs.tags }}
+       labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Build and push Docker image web
+      uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
+      with:
+       context: typescript/simple-mercari-web
+       file: typescript/simple-mercari-web/Dockerfile
        push: true
        tags: ${{ steps.meta.outputs.tags }}
        labels: ${{ steps.meta.outputs.labels }}
