@@ -1,9 +1,14 @@
-FROM alpine
+FROM golang:1.20.4
 
-RUN addgroup -S mercari && adduser -S trainee -G mercari
-# RUN chown -R trainee:mercari /path/to/db
+# Set destination for COPY command
+WORKDIR /app
 
-USER trainee
+# Download go modules
+COPY go.mod go.sum ./
+RUN go mod download
+COPY app/*.go ./
+COPY ./db/items.db ./db/items.db
+
 
 # Create image directory
 RUN mkdir -p /app/images
