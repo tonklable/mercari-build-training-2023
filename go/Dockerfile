@@ -9,6 +9,7 @@ RUN go mod download
 COPY app/*.go ./
 COPY ./db/items.db ./db/items.db
 
+
 # Create image directory
 RUN mkdir -p /app/images
 

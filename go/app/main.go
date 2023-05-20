@@ -49,32 +49,46 @@ func addItem(c echo.Context) error {
 	var newItem ItemDetail
 
 	// Get image file path
-	imgFilePath := c.FormValue("image")
+	imgFile, err := c.FormFile("image")
+	if err != nil {
+		c.Logger().Errorf("Error getting image file: %s", err)
+		res := Response{Message: "Error getting image file"}
+		return c.JSON(http.StatusInternalServerError, res)
+	}
+
+	// Print filename
+	c.Logger().Infof("Image filename: %s", imgFile.Filename)
+
+	// Transform image to bytes
 
 	// Check if image file path is empty
 	var hash string
-	var err error
-	if imgFilePath != "" {
-		hash, err = calculateImageHash(imgFilePath)
-		if err != nil {
-			c.Logger().Errorf("Error calculating image hash: %s", err)
-			res := Response{Message: "Error calculating image hash"}
-			return c.JSON(http.StatusInternalServerError, res)
-		}
-
+	if imgFile.Filename != "" {
 		// Read image file
-		content, err := ioutil.ReadFile(imgFilePath)
+		content, err := imgFile.Open()
 		if err != nil {
 			c.Logger().Errorf("Error reading image file: %s", err)
 			res := Response{Message: "Error reading image file"}
 			return c.JSON(http.StatusInternalServerError, res)
 		}
 
+		defer content.Close()
+
+		// Transform content to bytes
+		contentBytes, err := ioutil.ReadAll(content)
+		if err != nil {
+			c.Logger().Errorf("Error reading image file: %s", err)
+			res := Response{Message: "Error reading image file"}
+			return c.JSON(http.StatusInternalServerError, res)
+		}
+
+		hash = calculateImageHash(contentBytes)
+
 		// Set file path to hash
 		imgFilePathHash := path.Join(ImgDir, hash)
 
 		// Move image file to images directory
-		err = ioutil.WriteFile(imgFilePathHash, content, 0644)
+		err = ioutil.WriteFile(imgFilePathHash, contentBytes, 0644)
 		if err != nil {
 			c.Logger().Errorf("Error moving image file: %s", err)
 			res := Response{Message: "Error moving image file"}
@@ -273,17 +287,14 @@ func getImg(c echo.Context) error {
 	return c.File(imgPath)
 }
 
-func calculateImageHash(imageFilePath string) (string, error) {
-	//Read image file
-	imageData, err := os.ReadFile(imageFilePath)
-
+func calculateImageHash(imageFile []byte) string {
 	//Calculate hash
-	hash := sha256.Sum256(imageData)
+	hash := sha256.Sum256(imageFile)
 
 	//Convert hash to string
 	hashString := hex.EncodeToString(hash[:]) + ".jpg"
 
-	return hashString, err
+	return hashString
 }
 
 func main() {
